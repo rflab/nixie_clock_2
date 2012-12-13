@@ -1,0 +1,468 @@
+#usage "<b>OUTLINE CUTOFF </b>\n"
+       "<p>"
+       "Usage: RUN outline_cutoff"
+       "<p>"
+       "<author>Author: miracute@hotmail.co.jp</author><p>"
+
+
+
+//////////////////////////////////////////////////////
+//////////////////// ユーザー設定 ////////////////////
+//////////////////////////////////////////////////////
+
+string  DefaultSuffix   = "_cut_top.nc";            // お使いのCNC似合わせた拡張子に変更してください
+real    dtool           = 1;                    // エンドミルの直径を指定してください
+real    zstep           = 0.4;                  // Z軸のステップ値を指定してください
+real    depth           = -1.6;                 // 基板の厚さを指定してください
+real    fvalue          = 200;                  // XY軸のF値を指定してください
+real    z_fvalue        = 50;                   // Z軸のF値を指定してください
+real    cut_up          = 1;                    // 空転移動時の高さを指定してください
+int     drill_cut       = 1;                    // 取り付け穴のパスが必要ない場合は0にしてください
+
+
+
+///////////////////////////////////////////////////////
+////////////////////// ここまで ///////////////////////
+///////////////////////////////////////////////////////
+
+
+real pai  = 3.14159265358979;
+real tool = dtool / 2.0;
+real zpos = 0.0;
+int layer =-1;
+
+
+
+void holes_cut(real h_x, real h_y, real h_d)
+{
+
+
+
+
+
+
+return ;
+
+
+
+
+
+	real raza=(h_d-dtool)/2;
+
+	if (h_d > dtool) 
+	{
+		if ( depth < zstep)
+		{
+			while ((depth + 0.000001) < (zpos -= zstep))
+			{
+			printf("G00 X%.3f Y%.3f\n", h_x, (h_y + raza) * layer);
+			printf("G01 Z%.3f F%.0f\n",zpos, z_fvalue);
+			printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x - raza , h_y * layer         ,    raza, fvalue);
+			printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x        , (h_y - raza) * layer,    raza, fvalue);
+			printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x + raza , h_y * layer         ,    raza, fvalue);
+			printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x        , (h_y + raza) * layer,    raza, fvalue);
+			}
+		}
+		zpos = depth;
+
+		printf("G00 X%.3f Y%.3f\n", h_x, (h_y + raza) * layer);
+		printf("G01 Z%.3f F%.0f\n",zpos, z_fvalue);
+		printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x - raza , h_y * layer         ,    raza, fvalue);
+		printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x        , (h_y - raza) * layer,    raza, fvalue);
+		printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x + raza , h_y * layer         ,    raza, fvalue);
+		printf("G02 X%.3f Y%.3f R%3f F%.0f\n", h_x        , (h_y + raza) * layer,    raza, fvalue);
+
+		printf("G00 Z%.3f\n\n", cut_up);
+		zpos = 0;
+	}
+}
+
+
+
+void create_cuthole()
+{
+  board(B)
+  {
+    B.holes(H)
+    {
+      holes_cut(u2mm(H.x), -u2mm(H.y), u2mm(H.drill));
+    }
+    B.signals(S)
+    {
+      S.vias(V)
+      {
+        holes_cut(u2mm(V.x),u2mm(V.y),u2mm(V.drill));
+      }
+    }
+    B.elements(E)
+    {
+      E.package.contacts(C)
+      {
+        if (C.pad)
+        {
+          holes_cut(u2mm(C.pad.x),u2mm(C.pad.y),u2mm(C.pad.drill));
+        }
+      }
+      E.package.holes(H)
+      {
+        holes_cut(u2mm(H.x),u2mm(H.y),u2mm(H.drill));
+      }
+    }
+  }
+}
+
+
+
+// edit
+void cut_longhole()
+{
+	board(B)
+	{
+		B.elements(E)
+		{ 
+			E.package.wires(W)
+			{   
+				printf("G00 Z%f\n", 2.0 );
+				zpos = 0.0;
+				if (W.layer == LAYER_HOLES)
+				{
+				    if ( depth < zstep)
+				    {
+						while ((depth + 0.000001) < (zpos -= zstep))
+						{
+							printf("G00 X%f Y%f\n",  u2mm(W.x1), u2mm(W.y1));
+							printf("G01 Z%f F%f\n", zpos , z_fvalue);
+							printf("G01 X%f Y%f F%f\n", u2mm(W.x2), u2mm(W.y2), fvalue);
+							printf("G01 X%f Y%f F%f\n", u2mm(W.x1), u2mm(W.y1), fvalue);
+						}
+				    }
+				    zpos = depth;
+					printf("G00 X%f Y%f\n",  u2mm(W.x1), u2mm(W.y1));
+					printf("G01 Z%f F%f\n", zpos , z_fvalue);
+					printf("G01 X%f Y%f F%f\n", u2mm(W.x2), u2mm(W.y2), fvalue);
+					printf("G01 X%f Y%f F%f\n", u2mm(W.x1), u2mm(W.y1), fvalue);
+				}
+			}
+		}
+	}
+}
+
+
+real ver_x[];
+real ver_y[];
+int count = 0;
+int state = 0;
+
+
+void line_counter()
+{
+  board(B)
+  { 
+    B.wires(W)
+    { 
+      if (W.layer == LAYER_DIMENSION)
+      {
+        if (state == 0)
+        {
+          ver_x[count] = u2mm(W.x1);
+
+          //ver_y[count] = -u2mm(W.y1);
+          ver_y[count] = u2mm(W.y1);
+
+          //printf("G00 X%f Y%f\n", ver_x[count] , ver_y[count] );
+              
+          state = 1;
+          count ++;
+        }
+
+        ver_x[count] = u2mm(W.x2);
+        
+        
+        //ver_y[count] = -u2mm(W.y2);
+        ver_y[count] = u2mm(W.y2);
+        
+        
+        //printf("G01 X%f Y%f\n", ver_x[count] , ver_y[count] );
+        
+        count ++;
+      }
+    }
+    count --;
+    printf("\n");
+  }
+}
+
+
+
+
+
+real ax, ay, bx, by, res_0, res_1;
+
+real total_l = 0;
+real total_r = 0;
+int cou_l = 0;
+int cou_r = 0;
+int cc0, cc1, ioo, fc;
+
+
+
+
+
+
+void checkturn_right_or_left()
+{
+  for (fc = 0; fc <= count; fc ++)
+  {
+    if (fc == 0)
+      cc0 = count - 1;
+    else
+      cc0 = fc - 1;
+    
+    if (fc == count)
+      cc1 = 1;
+    else
+      cc1 = fc + 1;
+    
+    
+    ax = ver_x[cc0] - ver_x[fc];
+    ay = ver_y[cc0] - ver_y[fc];
+    bx = ver_x[cc1] - ver_x[fc];
+    by = ver_y[cc1] - ver_y[fc];
+    
+    if (sqrt(ax*ax + ay*ay) * sqrt(bx*bx + by*by) > 0)
+    {
+	    res_0 = asin(( ax * by - ay * bx ) / ( sqrt(ax*ax + ay*ay) * sqrt(bx*bx + by*by)));
+	    res_1 = acos(( ax * bx + ay * by ) / ( sqrt(ax*ax + ay*ay) * sqrt(bx*bx + by*by)));
+	}
+    
+    if (res_0 < 0)
+    res_1 = 360 - res_1;
+    
+    
+    //printf("%f\n\n", res_1 * 180 / pai );
+    
+    if (res_0 > 0)
+      cou_l ++;
+    else
+      cou_r ++;
+      
+      
+    total_l += res_0 * 180 / pai;
+    total_r += 360 + res_0 * 180 / pai;
+  }
+  if (cou_l > cou_r)
+  {
+    //printf("turn right!\n");
+    ioo = 0;
+  }else
+  {
+    //printf("turn left!\n");
+    ioo = 1;
+  }
+}
+
+
+
+int fc2;
+real ang_0, ang_1, xd, yd, xr, yr, xroot, yroot, at;
+real x_arg[], y_arg[], ret[], fir[] , bacv[];
+real arct;
+
+
+
+void write_outline()
+{
+  for (fc = 0; fc < count; fc ++)
+  {
+    fc2 = fc + 1;
+    
+    x_arg[0] = ver_x[fc];
+    x_arg[1] = ver_x[fc2];
+    y_arg[0] = ver_y[fc];
+    y_arg[1] = ver_y[fc2];
+    
+    xroot = x_arg[1] - x_arg[0];
+    yroot = y_arg[1] - y_arg[0];
+    
+    
+    if (xroot == 0.0 || yroot == 0.0)
+    {
+      if (xroot == 0 && y_arg[0] < y_arg[1])
+        ang_0 = 0;
+      if (xroot == 0 && y_arg[0] > y_arg[1])
+        ang_0 = 0;
+      if (yroot == 0 && x_arg[0] < x_arg[1])
+        ang_0 = 90;
+      if (yroot == 0 && x_arg[0] > x_arg[1])
+        ang_0 = 90;
+    }else
+    {
+      at = atan( yroot / xroot );
+      ang_0 = at * 180 / pai;
+      //printf("%f\n", ang_0 );
+      ang_0 = 90 - sqrt(ang_0*ang_0);
+    }
+    
+    
+    ret[0] = cos( ang_0 / 180 * pai ) * tool;
+    ret[1] = sin( ang_0 / 180 * pai ) * tool;
+    
+    if (xroot > 0 && yroot > 0)
+    {
+      ret[0] = -ret[0];
+      ret[1] = ret[1];
+    }
+    if (xroot < 0 && yroot > 0)
+    {
+      ret[0] = ret[0];
+      ret[1] = ret[1];
+    }
+    if (xroot < 0 && yroot < 0)
+    {
+      ret[0] = -ret[0];
+      ret[1] = ret[1];
+    }
+    if (xroot > 0 && yroot < 0)
+    {
+      ret[0] = ret[0];
+      ret[1] = ret[1];
+    }          
+    
+    
+    ax = xroot;
+    ay = yroot;
+    bx = ret[0];
+    by = ret[1];
+    
+    arct =  ( ax * by - ay * bx ) / ( sqrt(ax*ax + ay*ay) * sqrt(bx*bx + by*by));
+    if ( arct < -1 )
+      arct = -1;
+    if ( arct > 1 )
+      arct = 1;
+    //printf("%f\n", arct );
+    res_0 = asin( arct );
+      
+    //printf("%f\n", xroot );
+    //printf("%f\n", yroot );
+    //printf("%f\n", ret[0]  );
+    //printf("%f\n\n", ret[1]  );
+    //printf("%f\n", res_0 );
+    
+    if (ioo == 0)
+    {     
+      if (res_0 < 0)
+      {
+        if (fc != 0)
+          printf("G02 X%f Y%f I%f J%f\n\n", x_arg[0] - ret[0], y_arg[0] - ret[1], bacv[2], bacv[3] );
+        else
+        {
+          printf("G00 X%f Y%f\n", x_arg[0] - ret[0] , y_arg[0] - ret[1]);
+          printf("G01 Z%f F%f\n", zpos , z_fvalue);
+          
+          
+          fir[0] = x_arg[0] - ret[0];
+          fir[1] = y_arg[0] - ret[1];
+        }
+        printf("G01 X%f Y%f F%f\n", x_arg[1] - ret[0] , y_arg[1] - ret[1] , fvalue);
+        
+        bacv[2] = ret[0];
+        bacv[3] = ret[1];
+      }else
+      {
+        if (fc != 0)
+          printf("G02 X%f Y%f I%f J%f\n\n", x_arg[0] + ret[0], y_arg[0] + ret[1], bacv[2], bacv[3] );
+        else
+        {
+          printf("G00 X%f Y%f\n", x_arg[0] + ret[0] , y_arg[0] + ret[1]);
+          printf("G01 Z%f F%f\n", zpos , z_fvalue);
+          
+          fir[0] = x_arg[0] + ret[0];
+          fir[1] = y_arg[0] + ret[1];
+        }
+        printf("G01 X%f Y%f F%f\n", x_arg[1] + ret[0] , y_arg[1] + ret[1] , fvalue);
+        
+        bacv[2] = -ret[0];
+        bacv[3] = -ret[1];
+      }
+    }else
+    {
+      if (res_0 > 0)
+      {
+        if (fc != 0)
+          printf("G03 X%f Y%f I%f J%f\n\n", x_arg[0] - ret[0], y_arg[0] - ret[1], bacv[2], bacv[3] );
+        else
+        {
+          printf("G00 X%f Y%f\n", x_arg[0] - ret[0] , y_arg[0] - ret[1]);
+          printf("G01 Z%f F%f\n", zpos , z_fvalue);
+          
+          fir[0] = x_arg[0] - ret[0];
+          fir[1] = y_arg[0] - ret[1];
+        }
+        printf("G01 X%f Y%f F%f\n", x_arg[1] - ret[0] , y_arg[1] - ret[1] , fvalue);
+        bacv[2] = ret[0];
+        bacv[3] = ret[1];
+        
+        
+      }else
+      {
+        if (fc != 0)
+          printf("G03 X%f Y%f I%f J%f\n\n", x_arg[0] + ret[0], y_arg[0] + ret[1], bacv[2], bacv[3] );
+        else
+        {
+          printf("G00 X%f Y%f\n", x_arg[0] + ret[0] , y_arg[0] + ret[1]);
+          printf("G01 Z%f F%f\n", zpos , z_fvalue);
+          
+          fir[0] = x_arg[0] + ret[0];
+          fir[1] = y_arg[0] + ret[1];
+        }
+        printf("G01 X%f Y%f F%f\n", x_arg[1] + ret[0] , y_arg[1] + ret[1] , fvalue);
+        
+        bacv[2] = -ret[0];
+        bacv[3] = -ret[1];
+        
+      }
+    }
+  }
+  
+  
+  if (ioo == 0)
+    printf("G02 X%f Y%f I%f J%f\n\n", fir[0], fir[1], bacv[2], bacv[3] );
+  else
+    printf("G03 X%f Y%f I%f J%f\n\n", fir[0], fir[1], bacv[2], bacv[3] );
+}
+
+
+
+
+/////////////main/////////////
+
+board(B)
+{
+  output(filesetext(B.name, DefaultSuffix))
+  {
+    line_counter();
+    checkturn_right_or_left();
+    printf("T2 M06 S0 M03\n");
+    
+    if (drill_cut == 1)
+      create_cuthole();
+    
+    zpos = 0.0;    
+    printf("G00 Z%f\n", 2.0 );
+    cut_longhole();
+    
+	zpos = 0.0;    
+	printf("G00 Z%f\n", 2.0 );
+	if ( depth < zstep)
+	{
+		while ((depth + 0.000001) < (zpos -= zstep))
+		{
+			write_outline();
+		}
+	}
+	zpos = depth;
+	write_outline();
+
+	printf("G00 Z%f\n", 2.0 );
+  }
+}
