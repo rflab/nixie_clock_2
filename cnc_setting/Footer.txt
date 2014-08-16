@@ -1,5 +1,0 @@
-M09
-M05
-{G0XY_Initial}
-M30
-%
